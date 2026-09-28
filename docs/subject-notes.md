@@ -31,6 +31,8 @@ First line italic: *This project has been created as part of the 42 curriculum b
 
 ## Bonus part
 
+Status in this submission: not implemented. Notes kept for reference only.
+
 Only evaluated if mandatory is perfect.
 
 * Replicate the bonus partition structure from the subject.

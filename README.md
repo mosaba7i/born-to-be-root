@@ -77,10 +77,10 @@ Rocky advantages: enterprise SELinux policies, `firewalld` zones, closer to RHEL
 
 ### Main design choices
 
-* Partitioning: LVM on LUKS, separate `/`, `/home`, `/var`, `/srv`, `/tmp`, `/var/log`, plus swap. Fixed 20 GB disk satisfies mandatory and bonus layouts without waste. Full table in `docs/partitioning-20gb.md`.
+* Partitioning: LVM on LUKS, separate `/`, `/home`, `/var`, `/srv`, `/tmp`, `/var/log`, plus swap. Fixed 20 GB disk satisfies the mandatory layout with margin. Bonus not implemented. Full table in `docs/partitioning-20gb.md`.
 * Security: SSH port 4242 only, `PermitRootLogin no`, UFW deny by default with single allow, password quality via `pwquality`, login defs for ageing, sudoers drop-in with logging.
 * User management: root plus `malsabah` in `user42` and `sudo`. New evaluation users are added with `adduser` and `usermod -aG`.
-* Services: only `ssh`, `ufw`, `cron`. No web stack in mandatory part. Bonus adds `lighttpd`, `MariaDB`, `PHP` for WordPress plus one extra service, with firewall rules adapted.
+* Services: only `ssh`, `ufw`, `cron`. No web stack. Bonus not implemented, so no lighttpd, MariaDB, PHP, or extra service, and no extra open ports.
 
 ### Debian vs Rocky Linux
 
@@ -100,7 +100,7 @@ VirtualBox is mandatory where available, stores `.vdi` under `~/VirtualBox VMs/`
 
 ## Disk sizing
 
-Fixed 20 GB virtual disk. It holds the mandatory LVM on LUKS layout plus the bonus WordPress layout with margin, while staying small enough to duplicate for signature capture and to push no VM image to git. Full arithmetic in `docs/partitioning-20gb.md`. The OVA reference in `docs/ova.md` uses the same 20 GB base.
+Fixed 20 GB virtual disk. It holds the mandatory LVM on LUKS layout with margin, while staying small enough to duplicate for signature capture and to push no VM image to git. Bonus not implemented. Full arithmetic in `docs/partitioning-20gb.md`. The OVA reference in `docs/ova.md` uses the same 20 GB base.
 
 ## Resources
 

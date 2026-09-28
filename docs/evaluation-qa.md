@@ -25,7 +25,7 @@ Q: Why separate /var/log?
 A: Logs cannot fill root, sudo logs stay isolated, easier quota and backup.
 
 Q: Why fixed 20 GB?
-A: Fits mandatory plus bonus WordPress with reserve, deterministic signature, fast duplication and hashing. See `docs/partitioning-20gb.md`.
+A: Fits the mandatory layout with reserve, deterministic signature, fast duplication and hashing. Bonus not implemented. See `docs/partitioning-20gb.md`.
 
 ## Network and security
 
