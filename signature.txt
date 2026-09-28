@@ -1,0 +1,6 @@
+PASTE_SHA1_SIGNATURE_HERE
+# Replace this line with the sha1 of your VM disk before submission.
+# Example: 6e657c4619944be17df3c31faa030c25e43e40af
+# Linux VirtualBox: sha1sum ~/VirtualBox\ VMs/malsabah42/malsabah42.vdi
+# macOS VirtualBox: shasum ~/VirtualBox\ VMs/malsabah42/malsabah42.vdi
+# UTM: shasum ~/Library/Containers/com.utmapp.UTM/Data/Documents/malsabah42.utm/Images/disk-0.qcow2
