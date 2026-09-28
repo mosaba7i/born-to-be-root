@@ -29,3 +29,12 @@ Checks: `bash -n monitoring.sh`, `shellcheck monitoring.sh` if available.
 * **Files changed:** README.md, PROJECT.md, AGENTS.md, .gitignore, signature.txt, monitoring.sh, docs/subject-notes.md, docs/partitioning-20gb.md, docs/security-policy.md, docs/ova.md.
 * **Decisions and trade-offs:** Fixed 20 GB (not dynamic) for deterministic signature and evaluation. Debian over Rocky for simpler AppArmor and UFW path. OVA kept as link only, never committed.
 * **Known issues / next steps:** Owner must perform the VM install, test wall broadcasts, run ufw and sshd checks, then paste real sha1 into signature.txt.
+
+### 2026-09-28: solution walkthrough
+
+* **Date:** 2026-09-28
+* **What happened:** Added how I did it guide, verification checklist, evaluation Q and A, command cheatsheet, and screenshots folder. Linked them from README.
+* **How / technique:** Wrote ordered Debian 12 steps with exact commands and expected outputs so defense can be replayed. Screenshot names fixed to match walkthrough.
+* **Files changed:** docs/how-i-did-it.md, docs/verification.md, docs/evaluation-qa.md, docs/commands-cheatsheet.md, docs/screenshots/README.md, README.md.
+* **Decisions and trade-offs:** No binary screenshots committed yet to keep repo small. Placeholders define names and capture method instead.
+* **Known issues / next steps:** Owner must capture 11 PNGs listed in docs/screenshots/README.md and commit them.

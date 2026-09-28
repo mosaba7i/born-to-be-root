@@ -119,6 +119,11 @@ Fixed 20 GB virtual disk. It holds the mandatory LVM on LUKS layout plus the bon
 * `README.md`: this file, subject compliant.
 * `signature.txt`: sha1 of the VM disk, to be filled at submission.
 * `monitoring.sh`: boot and cron broadcast script.
+* `docs/how-i-did-it.md`: full step by step solution in order, with commands and expected outputs.
+* `docs/verification.md`: copy paste checklist to run before signature.
+* `docs/evaluation-qa.md`: questions asked at defense with short answers.
+* `docs/commands-cheatsheet.md`: daily commands for host and VM.
+* `docs/screenshots/`: required screenshot list with names, placeholders pending owner capture.
 * `docs/subject-notes.md`: condensed notes from `b2br.pdf`.
 * `docs/partitioning-20gb.md`: partition table and 20 GB justification.
 * `docs/security-policy.md`: SSH, UFW, password, sudo steps.
