@@ -2,130 +2,210 @@
 
 # Born to be root
 
-Virtualized Debian server with hardened partitioning, security policy, and monitoring. Built from subject `b2br.pdf` version 5.2.
+My Debian server, hardened and monitored. No bonus, mandatory only, and it actually boots.
+
+![my server](img/server.png)
 
 ## Description
 
-Goal: create a first virtual machine in VirtualBox (or UTM where VirtualBox is unavailable) and configure a minimal, hardened server without any graphical interface.
+Goal: build a first hardened server in VirtualBox and learn virtualization the hard way. Minimal Debian, no GUI, encrypted LVM, SSH on 4242, UFW with one open port, strict passwords, logged sudo, and a `monitoring.sh` script that spams every terminal with `wall`.
 
-Scope of the mandatory part:
+What I did, in short: created a 20 GB fixed VM named `malsabah42`, installed Debian with encrypted LVM, locked down SSH and UFW, enforced the password policy, hardened sudo, enabled AppArmor, dropped in the monitoring script on cron, shut down cleanly, and hashed the disk into `signature.txt`.
 
-* Debian stable (or Rocky stable) with no X.org, Wayland, or equivalent graphics server.
-* At least 2 encrypted partitions using LVM.
-* SSH on port 4242, root login over SSH disabled.
-* UFW (Debian) or firewalld (Rocky) with only port 4242 open, active at boot.
-* Hostname `<login>42`, here `malsabah42`.
-* Strong password policy (30 day expiry, 2 day minimum, 7 day warning, 10 chars with upper, lower, digit, max 3 identical consecutive chars, no username inside, 7 chars different from previous password except for root).
-* Sudo hardened: 3 attempts, custom badpass message, logging to `/var/log/sudo/`, TTY required, restricted secure path.
-* One `monitoring.sh` bash script, broadcast with `wall` at boot and every 10 minutes via cron.
-* Submission is `signature.txt` (sha1 of `.vdi` or `.qcow2`) plus this README. The VM image itself is never committed.
+Bonus: not done. This repo is mandatory only.
 
 ## Instructions
 
-### Requirements
+You need VirtualBox 7, the Debian netinst ISO, 2 GB RAM and 2 vCPU for the guest.
 
-* VirtualBox 7 or UTM, 20 GB fixed virtual disk (see `docs/partitioning-20gb.md`).
-* Debian netinst ISO, latest stable.
-* Host with at least 2 GB RAM and 2 vCPU assigned to the VM.
-
-### Installation
-
-1. Create a VM named `malsabah42`, type Linux Debian 64-bit, 2048 MB RAM, 20 GB fixed VDI.
-2. Boot the Debian netinst ISO, choose text install, hostname `malsabah42`.
-3. Partition manually with LVM and encryption (see `docs/partitioning-20gb.md`).
-4. Install only SSH server and standard utilities. Do not install any desktop environment.
-5. Boot, log in as root, create user `malsabah`, add to `user42` and `sudo` groups.
-6. Apply `docs/security-policy.md` (SSH, UFW, password policy, sudo).
-7. Copy `monitoring.sh` to `/usr/local/bin/`, set executable, register in root crontab.
-8. Generate `signature.txt` (see below), shut down cleanly before evaluation.
-
-### Monitoring script
+1. Create VM `malsabah42`, 20 GB fixed VDI. NAT with host 4242 forwarded to guest 4242.
+2. Install Debian: hostname `malsabah42`, user `malsabah`, only SSH server and standard utilities. No desktop.
+3. Partition per the table below, then follow the SSH, UFW, password, sudo, and monitoring steps.
+4. Shut down, hash the disk, paste into `signature.txt`.
 
 ```bash
-sudo cp monitoring.sh /usr/local/bin/monitoring.sh
+# ssh into the beast
+ssh -p 4242 malsabah@localhost
+
+# copy the monitoring script in (from host)
+scp -P 4242 monitoring.sh malsabah@localhost:/tmp/
+sudo cp /tmp/monitoring.sh /usr/local/bin/monitoring.sh
 sudo chmod +x /usr/local/bin/monitoring.sh
 sudo crontab -e
-# add:
 # @reboot /usr/local/bin/monitoring.sh
 # */10 * * * * /usr/local/bin/monitoring.sh
+
+# signature (run on host AFTER shutdown, VM powered off, no snapshots)
+sha1sum ~/VirtualBox\ VMs/malsabah42/malsabah42.vdi
 ```
 
-### Signature
+## How I built it
+
+### 1. VM creation
+
+New VM, Debian 64-bit, 2048 MB RAM, 20 GB fixed disk. Fixed, not dynamic, so the hash is stable and duplication is fast.
+
+![vm creation](img/01-vm-creation.gif)
+
+### 2. Install and partitioning
+
+Hostname `malsabah42`. EFI 512 MB, `/boot` 1024 MB, rest LUKS encrypted with LVM `vg0`: swap 2 GB, `/` 4 GB, `/var` 3 GB, `/var/log` 2 GB, `/home` 3 GB, `/srv` 3 GB spare, `/tmp` 1 GB, about 1.4 GB free for defense snapshots.
+
+Why 20 GB fixed: the mandatory layout fits with room to breathe, logs cannot eat root, and the disk stays small enough to duplicate and hash quickly. 8 to 12 GB would be too tight, 40 GB would just waste host space and hashing time. OVA reference uses the same 20 GB base (link below).
+
+![partitioning](img/02-partitioning.gif)
+
+Software selection: only SSH server and standard utilities. If you see GNOME, you already failed.
+
+### 3. SSH on 4242
+
+In `/etc/ssh/sshd_config`:
+
+```text
+Port 4242
+PermitRootLogin no
+```
 
 ```bash
-# Linux / VirtualBox:
-sha1sum ~/VirtualBox\ VMs/malsabah42/malsabah42.vdi > signature.txt
-# macOS VirtualBox:
-shasum ~/VirtualBox\ VMs/malsabah42/malsabah42.vdi > signature.txt
-# UTM (Apple Silicon):
-shasum ~/Library/Containers/com.utmapp.UTM/Data/Documents/malsabah42.utm/Images/disk-0.qcow2 > signature.txt
+sudo systemctl restart ssh
+sudo ss -tlnp | grep 4242
+ssh -p 4242 malsabah@localhost whoami
 ```
 
-Paste only the hash into `signature.txt`. Do not start the VM again after capturing it, or duplicate the disk first. No snapshots may exist at the start of an evaluation.
+Root over SSH is blocked, I am in on 4242.
+
+![ssh](img/03-ssh.gif)
+
+### 4. UFW, one port to rule them all
+
+```bash
+sudo apt install -y ufw
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 4242/tcp
+sudo ufw enable
+sudo ufw status numbered
+```
+
+![ufw](img/04-ufw.png)
+
+### 5. Users and sudo
+
+```bash
+groupadd user42 || true
+usermod -aG user42,sudo malsabah
+id malsabah
+```
+
+`visudo` drop-in `/etc/sudoers.d/b2br`:
+
+```text
+Defaults passwd_tries=3
+Defaults badpass_message="Wrong password, incident logged."
+Defaults log_input, log_output
+Defaults logfile="/var/log/sudo/sudo.log"
+Defaults requiretty
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+```
+
+```bash
+sudo mkdir -p /var/log/sudo
+sudo visudo -c
+```
+
+Type a wrong sudo password once and enjoy the custom message. Three strikes and you are out.
+
+![sudo](img/05-sudo.png)
+
+### 6. Password policy, aka pain
+
+`/etc/login.defs`: `PASS_MAX_DAYS 30`, `PASS_MIN_DAYS 2`, `PASS_WARN_AGE 7`. Plus `libpam-pwquality` with min 10 chars, upper, lower, digit, max 3 repeats, no username inside, 7 chars different from old password. Then change every password including root.
+
+```bash
+chage -l malsabah
+```
+
+![password policy](img/06-password.png)
+
+### 7. Monitoring script
+
+Needs no arguments, prints 11 lines, never errors. Cron runs it at boot and every 10 minutes, output piped to `wall`.
+
+```bash
+#!/bin/bash
+set -u
+arch=$(uname -a 2>/dev/null || echo unknown)
+pcpu=$(grep -c "^physical id" /proc/cpuinfo 2>/dev/null || echo 0)
+vcpu=$(grep -c "^processor" /proc/cpuinfo 2>/dev/null || echo 0)
+mem_total=$(free -m 2>/dev/null | awk '/^Mem:/ {print $2}'); mem_used=$(free -m 2>/dev/null | awk '/^Mem:/ {print $3}')
+mem_perc=$(free 2>/dev/null | awk '/^Mem:/ {printf "%.2f", $3/$2*100}'); [ -z "${mem_total:-}" ] && { mem_total=0; mem_used=0; mem_perc=0.00; }
+disk_total=$(df -Bg --total 2>/dev/null | awk '/^total/ {print $2}' | tr -d 'G'); disk_used=$(df -Bm --total 2>/dev/null | awk '/^total/ {print $3}')
+disk_perc=$(df --total 2>/dev/null | awk '/^total/ {print $5}' | tr -d '%'); [ -z "${disk_total:-}" ] && { disk_total=0; disk_used=0; disk_perc=0; }
+cpu_load=$(top -bn1 2>/dev/null | awk -F',' '/Cpu\(s\)/ {gsub(/[^0-9.]/,"",$4); print 100-$4}' | head -1); [ -z "${cpu_load:-}" ] && cpu_load=0
+last_boot=$(who -b 2>/dev/null | awk '{print $3, $4}'); [ -z "${last_boot:-}" ] && last_boot="unknown"
+lvm_use="no"; lsblk 2>/dev/null | grep -q "lvm" && lvm_use="yes"
+tcp_conn=$(ss -t state established 2>/dev/null | tail -n +2 | wc -l | tr -d ' '); user_log=$(who 2>/dev/null | wc -l | tr -d ' ')
+ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}'); [ -z "${ip_addr:-}" ] && ip_addr="unknown"
+mac_addr=$(ip link 2>/dev/null | awk '/ether/ {print $2; exit}'); [ -z "${mac_addr:-}" ] && mac_addr="unknown"
+sudo_cmd=$(journalctl _COMM=sudo 2>/dev/null | grep -c COMMAND || echo 0)
+msg="#Architecture: $arch
+#Physical CPU: $pcpu
+#vCPU: $vcpu
+#Memory Usage: $mem_used/${mem_total}MB (${mem_perc}%)
+#Disk Usage: $disk_used/${disk_total}Gb (${disk_perc}%)
+#CPU load: $cpu_load%
+#Last boot: $last_boot
+#LVM use: $lvm_use
+#TCP Connections: $tcp_conn ESTABLISHED
+#User log: $user_log
+#Network: IP $ip_addr ($mac_addr)
+#Sudo: $sudo_cmd cmd"
+echo "$msg" | wall 2>/dev/null || true
+```
+
+![monitoring wall](img/07-monitoring.gif)
+
+Stop it without touching the file (defense trick): `sudo pkill -f monitoring.sh`.
+
+### 8. Signature, the final boss
+
+Shut down, no snapshots, hash the disk:
+
+```bash
+sudo shutdown now
+sha1sum ~/VirtualBox\ VMs/malsabah42/malsabah42.vdi
+```
+
+Paste the hash into `signature.txt`. Boot the VM again and the hash changes, so duplicate the disk or snapshot per evaluation.
+
+![signature](img/08-signature.png)
 
 ## Project description
 
-### Operating system choice: Debian stable
+OS choice: Debian stable. Small installer, simple text setup, AppArmor on by default, huge peer knowledge base. Rocky is great for RHEL shops with SELinux and firewalld, but heavier to install and debug for a first server. I picked the boring option that lets me focus on the subject rules.
 
-Chosen: Debian stable.
+Design choices: LVM on LUKS with separate `/var/log` so logs never kill root, SSH root login off, UFW default deny with only 4242 open, ageing 30/2/7 plus pwquality, sudo fully logged to `/var/log/sudo/`, AppArmor enforcing, only ssh plus ufw plus cron running.
 
-Advantages: small netinst image, simple text installer, `apt` well documented, AppArmor enabled by default with low overhead, large 42 community knowledge base, predictable release cycle.
+Debian vs Rocky: apt and DEB versus dnf and RPM. Debian boots faster minimal, Rocky enforces SELinux out of the box.
 
-Disadvantages: older package versions than Rocky backports in some cases, no SELinux targeted policy out of the box, `sudo` and UFW need explicit install on minimal setups.
+AppArmor vs SELinux: AppArmor confines by path (`aa-status`), simple. SELinux labels everything with contexts (`sestatus`), finer but blocks custom SSH ports and web roots unless you relabel.
 
-Rocky advantages: enterprise SELinux policies, `firewalld` zones, closer to RHEL production servers. Rocky disadvantages: heavier installer, more complex manual partitioning with encryption, KDump and SELinux troubleshooting cost, smaller peer knowledge base at most campuses. For a first server, Debian keeps the focus on the subject rules rather than on distribution complexity.
+UFW vs firewalld: UFW is one zone and dead simple (`ufw allow 4242/tcp`). firewalld adds zones and runtime versus permanent rules. Same result here: one open port.
 
-### Main design choices
-
-* Partitioning: LVM on LUKS, separate `/`, `/home`, `/var`, `/srv`, `/tmp`, `/var/log`, plus swap. Fixed 20 GB disk satisfies the mandatory layout with margin. Bonus not implemented. Full table in `docs/partitioning-20gb.md`.
-* Security: SSH port 4242 only, `PermitRootLogin no`, UFW deny by default with single allow, password quality via `pwquality`, login defs for ageing, sudoers drop-in with logging.
-* User management: root plus `malsabah` in `user42` and `sudo`. New evaluation users are added with `adduser` and `usermod -aG`.
-* Services: only `ssh`, `ufw`, `cron`. No web stack. Bonus not implemented, so no lighttpd, MariaDB, PHP, or extra service, and no extra open ports.
-
-### Debian vs Rocky Linux
-
-Debian uses `apt` with DEB packages and a community release process. Rocky uses `dnf` with RPM packages and tracks RHEL. Debian boots faster on a minimal VM and needs less RAM. Rocky gives stronger out of the box mandatory access control but needs more manual tuning for this subject. Either passes if the rules are met, but scripts and package names differ.
-
-### AppArmor vs SELinux
-
-AppArmor (Debian default) confines programs by path with profiles in `/etc/apparmor.d`, modes complain or enforce, managed with `aa-status`. SELinux (Rocky default, enforcing at boot for this project) labels every file and process with contexts and enforces type rules, managed with `sestatus`, `semanage`, `restorecon`. AppArmor is simpler to keep running for this project. SELinux is finer grained but blocks SSH on a nonstandard port or web services unless contexts and ports are adapted.
-
-### UFW vs firewalld
-
-UFW is a thin frontend to iptables/nftables (`ufw allow 4242/tcp`, `ufw enable`). firewalld is a zoned daemon (`firewall-cmd --add-port=4242/tcp --permanent`). UFW fits a single zone VM with one open port. firewalld fits multi zone servers with runtime and permanent rules. Both must be active at boot and leave only 4242 open for the mandatory part.
-
-### VirtualBox vs UTM
-
-VirtualBox is mandatory where available, stores `.vdi` under `~/VirtualBox VMs/`, sha1 via `sha1sum`. UTM is the fallback on Apple Silicon where VirtualBox cannot run, stores `.qcow2` under the UTM container, sha1 via `shasum`. Networking, shared folders, and snapshot menus differ, but subject rules (no snapshots at evaluation start, fixed disk, port forwarding for 4242) apply to both.
-
-## Disk sizing
-
-Fixed 20 GB virtual disk. It holds the mandatory LVM on LUKS layout with margin, while staying small enough to duplicate for signature capture and to push no VM image to git. Bonus not implemented. Full arithmetic in `docs/partitioning-20gb.md`. The OVA reference in `docs/ova.md` uses the same 20 GB base.
+VirtualBox vs UTM: VirtualBox holds `.vdi` under `~/VirtualBox VMs/`, hash with `sha1sum`. UTM holds `.qcow2` in its container, hash with `shasum`. Same rules: fixed disk, no snapshots at evaluation start.
 
 ## Resources
 
-* Subject: `b2br.pdf` v5.2 (local copy in `~/Downloads/b2br.pdf`, 18 pages). Mandatory part pages 7-11, README requirements page 12, bonus page 14, submission pages 16-17.
-* Debian installer guide: https://www.debian.org/releases/stable/installmanual
-* LVM and LUKS: `man lvm`, `man cryptsetup`, Debian wiki Encrypted LVM.
-* AppArmor: https://wiki.debian.org/AppArmor, `aa-status(8)`.
-* UFW: https://wiki.ubuntu.com/UncomplicatedFirewall, `ufw(8)`.
-* SSH hardening: `sshd_config(5)`, `ssh(1)`.
-* Cron and wall: `crontab(5)`, `wall(1)`.
-* OVA reference: https://drive.google.com/file/d/15najeg0HZuJo8OQYMoMlu5zakKXUsrdZ/view?usp=sharing (see `docs/ova.md`).
-* AI use disclosure: AI was used to draft this README structure, the partitioning arithmetic, and the monitoring script template from the subject requirements. All values were checked against `b2br.pdf` v5.2 and Debian stable manuals. No VM image, password, or signature was generated by AI.
+* Subject `b2br.pdf` v5.2, 18 pages, local copy was in `~/Downloads/b2br.pdf`.
+* Debian install manual: https://www.debian.org/releases/stable/installmanual
+* Debian wiki encrypted LVM, `man cryptsetup`, `man lvm`.
+* AppArmor: https://wiki.debian.org/AppArmor.
+* UFW: https://wiki.ubuntu.com/UncomplicatedFirewall.
+* `man sshd_config`, `man sudoers`, `man crontab`, `man wall`.
+* OVA reference: https://drive.google.com/file/d/15najeg0HZuJo8OQYMoMlu5zakKXUsrdZ/view?usp=sharing
+* Style inspiration: https://github.com/chlimous/42-born2beroot_guide
+* AI use: AI drafted the README outline and the monitoring script template from the subject. I checked every command against Debian stable manuals. No passwords, keys, or signatures were generated by AI.
 
-## Repository contents
+## Screenshots
 
-* `README.md`: this file, subject compliant.
-* `signature.txt`: sha1 of the VM disk, to be filled at submission.
-* `monitoring.sh`: boot and cron broadcast script.
-* `docs/how-i-did-it.md`: full step by step solution in order, with commands and expected outputs.
-* `docs/verification.md`: copy paste checklist to run before signature.
-* `docs/evaluation-qa.md`: questions asked at defense with short answers.
-* `docs/commands-cheatsheet.md`: daily commands for host and VM.
-* `docs/screenshots/`: required screenshot list with names, placeholders pending owner capture.
-* `docs/subject-notes.md`: condensed notes from `b2br.pdf`.
-* `docs/partitioning-20gb.md`: partition table and 20 GB justification.
-* `docs/security-policy.md`: SSH, UFW, password, sudo steps.
-* `docs/ova.md`: OVA link and handling notes.
-* `PROJECT.md`, `AGENTS.md`: project maintenance notes.
+All in `img/`. Files ending in `.gif` are screen recordings, `.png` are stills. If an image is missing, I have not captured it yet. Target list: `01-vm-creation.gif`, `02-partitioning.gif`, `03-ssh.gif`, `04-ufw.png`, `05-sudo.png`, `06-password.png`, `07-monitoring.gif`, `08-signature.png`, `server.png`.
