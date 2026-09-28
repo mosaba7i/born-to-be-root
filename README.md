@@ -2,6 +2,8 @@
 
 my notes on how i survived this project. debian, virtualbox, mandatory only, no bonus. if it boots, it ships.
 
+![born2beroot cover](img/cover-born2beroot.png)
+
 ![born to be root](img/header.png)
 
 ## 0. what i used
