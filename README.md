@@ -1,211 +1,140 @@
-*This project has been created as part of the 42 curriculum by malsabah.*
+# born to be root 🐧
 
-# Born to be root
+my notes on how i survived this project. debian, virtualbox, mandatory only, no bonus. if it boots, it ships.
 
-My Debian server, hardened and monitored. No bonus, mandatory only, and it actually boots.
+![born2beroot](img/born2beroot.png)
 
-![my server](img/server.png)
+## 0. what i used
 
-## Description
+- virtualbox + debian netinst iso (amd64)
+- vm named `malsabah42`, 2gb ram, 2 cpu, **20gb fixed disk** (fixed so the hash stays stable, 20gb because the whole system fits with room for logs and i can still duplicate/hash it fast)
+- hostname `malsabah42`, user `malsabah`
+- ova i started from: https://drive.google.com/file/d/15najeg0HZuJo8OQYMoMlu5zakKXUsrdZ/view?usp=sharing
 
-Goal: build a first hardened server in VirtualBox and learn virtualization the hard way. Minimal Debian, no GUI, encrypted LVM, SSH on 4242, UFW with one open port, strict passwords, logged sudo, and a `monitoring.sh` script that spams every terminal with `wall`.
+## 1. creating the vm
 
-What I did, in short: created a 20 GB fixed VM named `malsabah42`, installed Debian with encrypted LVM, locked down SSH and UFW, enforced the password policy, hardened sudo, enabled AppArmor, dropped in the monitoring script on cron, shut down cleanly, and hashed the disk into `signature.txt`.
+new vm, pick the iso, skip unattended install, give it ram and cpu, 20gb fixed vdi. thats it.
 
-Bonus: not done. This repo is mandatory only.
+![vm creation](img/vm_creation.gif)
 
-## Instructions
+## 2. installing debian
 
-You need VirtualBox 7, the Debian netinst ISO, 2 GB RAM and 2 vCPU for the guest.
+boot, hit install, hostname `malsabah42`, skip domain, set root + user passwords (make them strong now, the policy will yell at you later otherwise).
 
-1. Create VM `malsabah42`, 20 GB fixed VDI. NAT with host 4242 forwarded to guest 4242.
-2. Install Debian: hostname `malsabah42`, user `malsabah`, only SSH server and standard utilities. No desktop.
-3. Partition per the table below, then follow the SSH, UFW, password, sudo, and monitoring steps.
-4. Shut down, hash the disk, paste into `signature.txt`.
+![boot](img/debian1.gif)
+
+![users](img/debian2.gif)
+
+### partitioning (the scary part)
+
+i went with encrypted lvm: efi 512mb, /boot ~1gb outside encryption, rest encrypted. inside lvm: swap 2gb, `/` 4gb, `/var` 3gb, `/var/log` 2gb (so logs never kill root), `/home` 3gb, `/srv` 3gb spare, `/tmp` 1gb, leftover free for snapshots. at least 2 encrypted partitions = covered since everything sits on luks.
+
+![partitioning](img/debian3.gif)
+
+![lvm](img/debian4.gif)
+
+software selection: **only ssh server + standard utilities**. uncheck everything desktop. if gnome shows up you messed up.
+
+![software](img/debian5.gif)
+
+## 3. ssh on port 4242
+
+login as root, open `/etc/ssh/sshd_config`, set `Port 4242` and `PermitRootLogin no`, restart ssh. then port-forward host 4242 -> guest 4242 in virtualbox network settings so i can `ssh -p 4242 malsabah@localhost` from my own terminal.
+
+![ssh config](img/ssh1.gif)
+
+![port forward](img/ssh2.gif)
+
+![ssh login](img/ssh3.gif)
+
+## 4. firewall (ufw, one port open)
 
 ```bash
-# ssh into the beast
-ssh -p 4242 malsabah@localhost
-
-# copy the monitoring script in (from host)
-scp -P 4242 monitoring.sh malsabah@localhost:/tmp/
-sudo cp /tmp/monitoring.sh /usr/local/bin/monitoring.sh
-sudo chmod +x /usr/local/bin/monitoring.sh
-sudo crontab -e
-# @reboot /usr/local/bin/monitoring.sh
-# */10 * * * * /usr/local/bin/monitoring.sh
-
-# signature (run on host AFTER shutdown, VM powered off, no snapshots)
-sha1sum ~/VirtualBox\ VMs/malsabah42/malsabah42.vdi
+apt install ufw
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 4242
+ufw enable
+ufw status numbered
 ```
 
-## How I built it
+![ufw](img/ufw.gif)
 
-### 1. VM creation
+## 5. sudo + groups
 
-New VM, Debian 64-bit, 2048 MB RAM, 20 GB fixed disk. Fixed, not dynamic, so the hash is stable and duplication is fast.
+```bash
+apt install sudo
+visudo
+```
 
-![vm creation](img/01-vm-creation.gif)
-
-### 2. Install and partitioning
-
-Hostname `malsabah42`. EFI 512 MB, `/boot` 1024 MB, rest LUKS encrypted with LVM `vg0`: swap 2 GB, `/` 4 GB, `/var` 3 GB, `/var/log` 2 GB, `/home` 3 GB, `/srv` 3 GB spare, `/tmp` 1 GB, about 1.4 GB free for defense snapshots.
-
-Why 20 GB fixed: the mandatory layout fits with room to breathe, logs cannot eat root, and the disk stays small enough to duplicate and hash quickly. 8 to 12 GB would be too tight, 40 GB would just waste host space and hashing time. OVA reference uses the same 20 GB base (link below).
-
-![partitioning](img/02-partitioning.gif)
-
-Software selection: only SSH server and standard utilities. If you see GNOME, you already failed.
-
-### 3. SSH on 4242
-
-In `/etc/ssh/sshd_config`:
+threw this in:
 
 ```text
-Port 4242
-PermitRootLogin no
-```
-
-```bash
-sudo systemctl restart ssh
-sudo ss -tlnp | grep 4242
-ssh -p 4242 malsabah@localhost whoami
-```
-
-Root over SSH is blocked, I am in on 4242.
-
-![ssh](img/03-ssh.gif)
-
-### 4. UFW, one port to rule them all
-
-```bash
-sudo apt install -y ufw
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 4242/tcp
-sudo ufw enable
-sudo ufw status numbered
-```
-
-![ufw](img/04-ufw.png)
-
-### 5. Users and sudo
-
-```bash
-groupadd user42 || true
-usermod -aG user42,sudo malsabah
-id malsabah
-```
-
-`visudo` drop-in `/etc/sudoers.d/b2br`:
-
-```text
-Defaults passwd_tries=3
-Defaults badpass_message="Wrong password, incident logged."
-Defaults log_input, log_output
-Defaults logfile="/var/log/sudo/sudo.log"
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Defaults requiretty
-Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+Defaults badpass_message="nope. wrong password."
+Defaults logfile="/var/log/sudo/sudo.log"
+Defaults log_input
+Defaults log_output
+Defaults iolog_dir=/var/log/sudo
+Defaults passwd_tries=3
 ```
 
+![sudo config](img/sudo1.gif)
+
+then the groups:
+
 ```bash
-sudo mkdir -p /var/log/sudo
-sudo visudo -c
+groupadd user42
+usermod -a -G user42,sudo malsabah
+cat /etc/group
 ```
 
-Type a wrong sudo password once and enjoy the custom message. Three strikes and you are out.
+![groups](img/sudo2.gif)
 
-![sudo](img/05-sudo.png)
+## 6. password policy (pain section)
 
-### 6. Password policy, aka pain
+in `/etc/login.defs`: expiry 30 days, min 2 days between changes, warn 7 days. applied it with `chage -M 30` / `chage -m 2` on my user + root.
 
-`/etc/login.defs`: `PASS_MAX_DAYS 30`, `PASS_MIN_DAYS 2`, `PASS_WARN_AGE 7`. Plus `libpam-pwquality` with min 10 chars, upper, lower, digit, max 3 repeats, no username inside, 7 chars different from old password. Then change every password including root.
+![policy](img/pwd_policy1.gif)
 
-```bash
-chage -l malsabah
+then pwquality for the strong stuff (`apt install libpam-pwquality`), in `/etc/pam.d/common-password`:
+
+```text
+password requisite pam_pwquality.so retry=3 minlen=10 difok=7 maxrepeat=3 dcredit=-1 ucredit=-1 lcredit=-1 reject_username enforce_for_root
 ```
 
-![password policy](img/06-password.png)
+translation: 10+ chars, upper + lower + digit, max 3 same chars in a row, no username in it, 7 chars different from old password. then `passwd malsabah` + `passwd root` again and suffer.
 
-### 7. Monitoring script
+![pwquality](img/pwquality.gif)
 
-Needs no arguments, prints 11 lines, never errors. Cron runs it at boot and every 10 minutes, output piped to `wall`.
+## 7. monitoring script + cron
 
-```bash
-#!/bin/bash
-set -u
-arch=$(uname -a 2>/dev/null || echo unknown)
-pcpu=$(grep -c "^physical id" /proc/cpuinfo 2>/dev/null || echo 0)
-vcpu=$(grep -c "^processor" /proc/cpuinfo 2>/dev/null || echo 0)
-mem_total=$(free -m 2>/dev/null | awk '/^Mem:/ {print $2}'); mem_used=$(free -m 2>/dev/null | awk '/^Mem:/ {print $3}')
-mem_perc=$(free 2>/dev/null | awk '/^Mem:/ {printf "%.2f", $3/$2*100}'); [ -z "${mem_total:-}" ] && { mem_total=0; mem_used=0; mem_perc=0.00; }
-disk_total=$(df -Bg --total 2>/dev/null | awk '/^total/ {print $2}' | tr -d 'G'); disk_used=$(df -Bm --total 2>/dev/null | awk '/^total/ {print $3}')
-disk_perc=$(df --total 2>/dev/null | awk '/^total/ {print $5}' | tr -d '%'); [ -z "${disk_total:-}" ] && { disk_total=0; disk_used=0; disk_perc=0; }
-cpu_load=$(top -bn1 2>/dev/null | awk -F',' '/Cpu\(s\)/ {gsub(/[^0-9.]/,"",$4); print 100-$4}' | head -1); [ -z "${cpu_load:-}" ] && cpu_load=0
-last_boot=$(who -b 2>/dev/null | awk '{print $3, $4}'); [ -z "${last_boot:-}" ] && last_boot="unknown"
-lvm_use="no"; lsblk 2>/dev/null | grep -q "lvm" && lvm_use="yes"
-tcp_conn=$(ss -t state established 2>/dev/null | tail -n +2 | wc -l | tr -d ' '); user_log=$(who 2>/dev/null | wc -l | tr -d ' ')
-ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}'); [ -z "${ip_addr:-}" ] && ip_addr="unknown"
-mac_addr=$(ip link 2>/dev/null | awk '/ether/ {print $2; exit}'); [ -z "${mac_addr:-}" ] && mac_addr="unknown"
-sudo_cmd=$(journalctl _COMM=sudo 2>/dev/null | grep -c COMMAND || echo 0)
-msg="#Architecture: $arch
-#Physical CPU: $pcpu
-#vCPU: $vcpu
-#Memory Usage: $mem_used/${mem_total}MB (${mem_perc}%)
-#Disk Usage: $disk_used/${disk_total}Gb (${disk_perc}%)
-#CPU load: $cpu_load%
-#Last boot: $last_boot
-#LVM use: $lvm_use
-#TCP Connections: $tcp_conn ESTABLISHED
-#User log: $user_log
-#Network: IP $ip_addr ($mac_addr)
-#Sudo: $sudo_cmd cmd"
-echo "$msg" | wall 2>/dev/null || true
+my script prints the 11 required lines (arch, cpu, ram, disk, load, boot, lvm, tcp, users, ip/mac, sudo count) and pipes to `wall`. cron runs it at reboot + every 10 min:
+
+```text
+@reboot bash /etc/cron.d/monitoring.sh | wall
+*/10 * * * * bash /etc/cron.d/monitoring.sh | wall
 ```
 
-![monitoring wall](img/07-monitoring.gif)
+(full script lives in `monitoring.sh` in older commits if you want it.)
 
-Stop it without touching the file (defense trick): `sudo pkill -f monitoring.sh`.
+![cron](img/cron.gif)
 
-### 8. Signature, the final boss
+kill it without editing (evaluators love this trick): `sudo pkill -f monitoring.sh`
 
-Shut down, no snapshots, hash the disk:
+## 8. signature.txt, the final boss
+
+shutdown the vm, make sure zero snapshots exist, then on the host:
 
 ```bash
-sudo shutdown now
 sha1sum ~/VirtualBox\ VMs/malsabah42/malsabah42.vdi
 ```
 
-Paste the hash into `signature.txt`. Boot the VM again and the hash changes, so duplicate the disk or snapshot per evaluation.
+paste that hash into `signature.txt`. boot the vm again and the hash changes, so duplicate the disk for safety.
 
-![signature](img/08-signature.png)
+![signature](img/signature.gif)
 
-## Project description
+---
 
-OS choice: Debian stable. Small installer, simple text setup, AppArmor on by default, huge peer knowledge base. Rocky is great for RHEL shops with SELinux and firewalld, but heavier to install and debug for a first server. I picked the boring option that lets me focus on the subject rules.
-
-Design choices: LVM on LUKS with separate `/var/log` so logs never kill root, SSH root login off, UFW default deny with only 4242 open, ageing 30/2/7 plus pwquality, sudo fully logged to `/var/log/sudo/`, AppArmor enforcing, only ssh plus ufw plus cron running.
-
-Debian vs Rocky: apt and DEB versus dnf and RPM. Debian boots faster minimal, Rocky enforces SELinux out of the box.
-
-AppArmor vs SELinux: AppArmor confines by path (`aa-status`), simple. SELinux labels everything with contexts (`sestatus`), finer but blocks custom SSH ports and web roots unless you relabel.
-
-UFW vs firewalld: UFW is one zone and dead simple (`ufw allow 4242/tcp`). firewalld adds zones and runtime versus permanent rules. Same result here: one open port.
-
-VirtualBox vs UTM: VirtualBox holds `.vdi` under `~/VirtualBox VMs/`, hash with `sha1sum`. UTM holds `.qcow2` in its container, hash with `shasum`. Same rules: fixed disk, no snapshots at evaluation start.
-
-## Resources
-
-* Subject `b2br.pdf` v5.2, 18 pages, local copy was in `~/Downloads/b2br.pdf`.
-* Debian install manual: https://www.debian.org/releases/stable/installmanual
-* Debian wiki encrypted LVM, `man cryptsetup`, `man lvm`.
-* AppArmor: https://wiki.debian.org/AppArmor.
-* UFW: https://wiki.ubuntu.com/UncomplicatedFirewall.
-* `man sshd_config`, `man sudoers`, `man crontab`, `man wall`.
-* OVA reference: https://drive.google.com/file/d/15najeg0HZuJo8OQYMoMlu5zakKXUsrdZ/view?usp=sharing
-* Style inspiration: https://github.com/chlimous/42-born2beroot_guide
-* AI use: AI drafted the README outline and the monitoring script template from the subject. I checked every command against Debian stable manuals. No passwords, keys, or signatures were generated by AI.
-
-## Screenshots
-
-All in `img/`. Files ending in `.gif` are screen recordings, `.png` are stills. If an image is missing, I have not captured it yet. Target list: `01-vm-creation.gif`, `02-partitioning.gif`, `03-ssh.gif`, `04-ufw.png`, `05-sudo.png`, `06-password.png`, `07-monitoring.gif`, `08-signature.png`, `server.png`.
+thats the whole thing. mandatory done, no bonus, no web server, no extra ports. good luck on defense, know your `apt vs aptitude` and what apparmor does or they will eat you alive.
